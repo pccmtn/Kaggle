@@ -1,3 +1,4 @@
+rm(list = ls())
 library(dplyr)
 library(plyr)
 library(ggplot2)
@@ -10,7 +11,7 @@ require(devtools)
 require(Rstem)
 library(randomForest)
 
-setwd("~/Desktop/R/Two sigma/")
+setwd("C:/Users/mpocchiari/Downloads/R tutorials csv files/Kaggle-master/Kaggle-master")
 
 # Load and visualize 
 
@@ -105,6 +106,7 @@ dfs <- cbind(final, al)
 
 rm(list = c("al", "d", "d2", "df", "features", "fin", "final", "freqfeatures"))
 
+
 ###################################################################################
 ################################                ################################### 
 ################################  VISUALIZATION ###################################
@@ -148,7 +150,7 @@ ggplot(dfs, aes(x = bb, y = price.log)) +
 
 require(rworldmap)
 require(mapproj)
-library(ggmap)
+require("ggmap")
 
 mymap <- ggmap::get_map(location = "New York", maptype = "roadmap", zoom = 12)
 ggmap(mymap)
@@ -157,7 +159,7 @@ dfs$latitude <- as.numeric(dfs$latitude)
 dfs$longitude <- as.numeric(dfs$longitude)
 
 ggmap(mymap) +
-  geom_point(aes(x = longitude, y = latitude, color = price.log), #alpha = 0.5),
+  geom_point(aes(x = longitude, y = latitude, color = price.log, group = price.log), #alpha = 0.5),
              data = dfs)
 
 # There doesn't seem to be a clear relationship 
@@ -196,6 +198,7 @@ ggplot(dfs, aes(x = total.features, y = interest_level.s)) +
 
 # clear positive pattern, more features -> more interest
 
+
 #### Correlation across features
 
 cov.matrix <- as.data.frame(cor(dfs[, 15:112]))
@@ -213,15 +216,22 @@ write.xlsx(cov.matrix, "covariance features lower triangle.xlsx", sheetName = "c
 
 vec <- rep(0, 102)
 
-# review
+covar <- as.data.frame(cov.matrix)
+covar$colnames <- rownames(covar)
 
-for (i in 1:nrow(cov.matrix)) {
-  for (j in 1:ncol(cov.matrix)) {
-    if (cov.matrix[i,j] > 0.20 | cov.matrix[i,j] < -0.20) {
-      vec[j] <- paste(colnames(cov.matrix)[j])
-    } 
-  }
-}
+covar <- melt(covar, id.vars = "colnames")
+#covar <- covar[covar$value > 0,]
+covar <- covar[covar$value > 0.20 | covar$value < -0.20, ]
+covar <- covar[covar$value > 0.50 | covar$value < -0.50, ]
+
+library(dplyr)
+
+covar <- covar %>% arrange(desc(value))
+
+
+
+clean$manager_id <- as.factor(unlist(clean$manager_id))
+clean$building_id <- as.factor(unlist(clean$building_id))
 
 
 ###################################################################################
@@ -236,9 +246,21 @@ for (i in 1:nrow(cov.matrix)) {
 exclude_cols <- c("building_id","display_address","listing_id")
 subs <- dfs[!names(dfs) %in% exclude_cols ]
 
-dfs$manager_id <- as.character(dfs$manager_id)
-dfs$street_address <- as.character(dfs$street_address)
+dfs$manager_id <- as.numeric(unlist(dfs$manager_id))
+dfs$street_address <- as.numeric(dfs$street_address)
+dfs$display_address <- as.numeric(dfs$display_address)
+dfs$building_id <- NULL
+dfs$coordinates <- paste(as.numeric(dfs[, "latitude"]), as.numeric(dfs[, "longitude"]), collapse = ",")
 
+vec <- unique(covar$colnames)
+
+# remove the features that are highly correlated with others (stored in vec)
+
+clean <- dfs[, -which(names(dfs) %in% c("washerinunit","dogsallowed","simplex","marblebath","lowrise","light","subway",
+                                        "virtualdoorman","gymfitness","luxurybuilding","residentslounge","renovated","hardwoodfloors",
+                                        "elevator","fitnesscenter","wifiaccess","loungeroom","fulltimedoorman","walkinclosets",
+                                        "laundryinbuilding","valet","onsitegarage","stainlesssteelappliances"))]
+clean <- clean[, c(13, 9,14:ncol(clean))]
 
 ########################################################################################
 ################################                     ################################### 
@@ -247,8 +269,8 @@ dfs$street_address <- as.character(dfs$street_address)
 ########################################################################################
 
 
-kiva_rf_9 <- randomForest(interest_level ~ ., 
-                          data = subs[!is.na(subs)], ntree = 1000,
+kiva_rf_9 <- randomForest(interest_level.s ~ . -respid -manager_id, 
+                          data = clean, ntree = 1000,
                           importance = TRUE, mtry = 9,na.rm = TRUE)
 
 ddf <- data.frame(rf_9 = kiva_rf_9$err.rate[, "OOB"],
